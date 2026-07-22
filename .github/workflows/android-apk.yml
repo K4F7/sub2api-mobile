@@ -52,31 +52,7 @@ jobs:
 
           printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
 
-          node <<'EOF'
-          const fs = require('node:fs');
-          const path = 'android/app/build.gradle';
-          let source = fs.readFileSync(path, 'utf8');
-
-          const signingAnchor = '    signingConfigs {\n        debug {';
-          if (!source.includes(signingAnchor)) {
-            throw new Error('Could not find signingConfigs in generated build.gradle');
-          }
-          source = source.replace(signingAnchor, `    signingConfigs {
-        release {
-            storeFile file(System.getenv('ANDROID_KEYSTORE_PATH'))
-            storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
-            keyAlias System.getenv('ANDROID_KEY_ALIAS')
-            keyPassword System.getenv('ANDROID_KEY_PASSWORD')
-        }
-        debug {`);
-
-          const releasePattern = /(release\s*\{[\s\S]*?)signingConfig signingConfigs\.debug/;
-          if (!releasePattern.test(source)) {
-            throw new Error('Could not find the generated release signingConfig');
-          }
-          source = source.replace(releasePattern, '$1signingConfig signingConfigs.release');
-          fs.writeFileSync(path, source);
-          EOF
+          node .github/scripts/configure-android-release-signing.mjs
 
       - name: Build signed release APK and AAB
         working-directory: android
