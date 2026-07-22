@@ -1,4 +1,4 @@
-name: Android APK
+name: Android Release
 
 on:
   workflow_dispatch:
@@ -8,6 +8,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+    env:
+      ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+      ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+      ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+      ANDROID_KEYSTORE_PATH: ${{ github.workspace }}/android/app/release.keystore
 
     steps:
       - name: Checkout
@@ -29,16 +35,76 @@ jobs:
         run: npm ci
 
       - name: Generate Android project
-        run: npx expo prebuild --platform android --non-interactive --no-install
+        env:
+          CI: "1"
+        run: npx expo prebuild --platform android --no-install
 
-      - name: Build debug APK
+      - name: Configure release signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in ANDROID_KEYSTORE_BASE64 ANDROID_KEYSTORE_PASSWORD ANDROID_KEY_ALIAS ANDROID_KEY_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "Missing required GitHub Actions secret: $name" >&2
+              exit 1
+            fi
+          done
+
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$ANDROID_KEYSTORE_PATH"
+
+          node <<'EOF'
+          const fs = require('node:fs');
+          const path = 'android/app/build.gradle';
+          let source = fs.readFileSync(path, 'utf8');
+
+          const signingAnchor = '    signingConfigs {\n        debug {';
+          if (!source.includes(signingAnchor)) {
+            throw new Error('Could not find signingConfigs in generated build.gradle');
+          }
+          source = source.replace(signingAnchor, `    signingConfigs {
+        release {
+            storeFile file(System.getenv('ANDROID_KEYSTORE_PATH'))
+            storePassword System.getenv('ANDROID_KEYSTORE_PASSWORD')
+            keyAlias System.getenv('ANDROID_KEY_ALIAS')
+            keyPassword System.getenv('ANDROID_KEY_PASSWORD')
+        }
+        debug {`);
+
+          const releasePattern = /(release\s*\{[\s\S]*?)signingConfig signingConfigs\.debug/;
+          if (!releasePattern.test(source)) {
+            throw new Error('Could not find the generated release signingConfig');
+          }
+          source = source.replace(releasePattern, '$1signingConfig signingConfigs.release');
+          fs.writeFileSync(path, source);
+          EOF
+
+      - name: Build signed release APK and AAB
         working-directory: android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleRelease bundleRelease --no-daemon
 
-      - name: Upload APK
+      - name: Verify release signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK="android/app/build/outputs/apk/release/app-release.apk"
+          APKSIGNER="$(find "$ANDROID_HOME/build-tools" -name apksigner -type f | sort -V | tail -n 1)"
+          "$APKSIGNER" verify --verbose --print-certs "$APK"
+
+          cd android/app/build/outputs
+          sha256sum apk/release/app-release.apk bundle/release/app-release.aab > SHA256SUMS
+
+      - name: Upload signed release packages
         uses: actions/upload-artifact@v4
         with:
-          name: sub2api-mobile-debug-apk
-          path: android/app/build/outputs/apk/debug/app-debug.apk
+          name: sub2api-mobile-android-release
+          path: |
+            android/app/build/outputs/apk/release/app-release.apk
+            android/app/build/outputs/bundle/release/app-release.aab
+            android/app/build/outputs/SHA256SUMS
           if-no-files-found: error
-          retention-days: 14
+          retention-days: 30
+
+      - name: Remove keystore
+        if: always()
+        shell: bash
+        run: rm -f -- "$ANDROID_KEYSTORE_PATH"
