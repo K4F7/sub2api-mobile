@@ -39,6 +39,13 @@ jobs:
           CI: "1"
         run: npx expo prebuild --platform android --no-install
 
+      - name: Configure Gradle build resources
+        working-directory: android
+        shell: bash
+        run: |
+          sed -i 's/^org.gradle.jvmargs=.*/org.gradle.jvmargs=-Xmx2048m -XX:MaxMetaspaceSize=1g/' gradle.properties
+          printf '\norg.gradle.workers.max=2\n' >> gradle.properties
+
       - name: Configure release signing
         shell: bash
         run: |
