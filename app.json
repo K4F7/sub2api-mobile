@@ -2,7 +2,7 @@
   "expo": {
     "name": "sub2api-mobile",
     "slug": "sub2api-mobile",
-    "owner": "ckken",
+    "owner": "sein2267s-team",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./icons/ios/AppIcon.appiconset/icon-1024.png",
@@ -39,15 +39,15 @@
     "extra": {
       "router": {},
       "eas": {
-        "projectId": "acaedd05-5a2a-4843-a648-e025c08ce7b3"
+        "projectId": "38184b1a-f81b-4698-a56a-ad8bebf875de"
       }
     },
     "runtimeVersion": {
       "policy": "appVersion"
     },
+    "scheme": "sub2apimobile",
     "updates": {
-      "url": "https://u.expo.dev/acaedd05-5a2a-4843-a648-e025c08ce7b3"
-    },
-    "scheme": "sub2apimobile"
+      "url": "https://u.expo.dev/38184b1a-f81b-4698-a56a-ad8bebf875de"
+    }
   }
 }
